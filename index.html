@@ -39,7 +39,7 @@
     <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-3">
             <span class="text-xl font-black tracking-tighter text-gray-900">STOCK<span class="text-akira">BOARD</span></span>
-            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v1.6 Fixed Auto-Scale Candlestick</span>
+            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v1.7 Perfect Candlestick & MA</span>
         </div>
         <!-- Settings Gear Button -->
         <button class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 hover:text-akira hover:border-akira transition-colors">
@@ -75,7 +75,7 @@
                 <!-- Main Candlestick Custom Chart -->
                 <div class="white-card rounded-xl p-4 flex flex-col h-1/2 shadow-sm relative">
                     <div class="flex justify-between items-center mb-1">
-                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 1년 일봉 차트 & 이평선</h3>
+                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 1년 일봉 차트 & 이동평균선</h3>
                         <span class="text-xs text-akira bg-red-50 px-2 py-0.5 rounded font-bold">드래그: 줌 / 더블클릭: 초기화</span>
                     </div>
                     <div class="relative flex-1 w-full" style="min-height: 150px;">
@@ -149,19 +149,22 @@
     <script>
         let priceChart, subChart;
 
-        // 캔들스틱 플러그인 (현재 보이는 X축 영역에 맞춰 캔들 몸통 두께 동적 조절)
+        // 정교한 캔들스틱 렌더링 플러그인
         const candlestickPlugin = {
             id: 'candlestickCustom',
             afterDraw(chart) {
                 const { ctx, scales: { x, y } } = chart;
-                const dataset = chart.data.datasets[3]; // candles 데이터셋 인덱스
-                if (!dataset || !dataset.candles) return;
+                const meta = chart.getDatasetMeta(0); // 첫 번째 데이터셋(캔들) 기준
+                if (!meta || !meta.data) return;
+
+                const candles = chart.data.candles;
+                if (!candles) return;
 
                 ctx.save();
-                dataset.candles.forEach((candle, index) => {
+                candles.forEach((candle, index) => {
                     const xCoord = x.getPixelForValue(index);
                     
-                    // 화면 영역 외곽 렌더링 최적화
+                    // 화면 영역 외곽 렌더링 스킵 (성능 최적화)
                     if (xCoord < x.left - 20 || xCoord > x.right + 20) return;
 
                     const openCoord = y.getPixelForValue(candle.o);
@@ -172,7 +175,7 @@
                     const isUp = candle.c >= candle.o;
                     const color = isUp ? '#EF4444' : '#3B82F6'; // 양봉: 빨강, 음봉: 파랑
 
-                    // 1. 심지(Wick)
+                    // 1. 심지(Wick) 그리기
                     ctx.strokeStyle = color;
                     ctx.lineWidth = 1.2;
                     ctx.beginPath();
@@ -180,12 +183,11 @@
                     ctx.lineTo(xCoord, lowCoord);
                     ctx.stroke();
 
-                    // 2. 몸통(Body) - 캔들 개수에 맞춰 너비 동적 계산
+                    // 2. 몸통(Body) 그리기
                     const topY = Math.min(openCoord, closeCoord);
                     const bottomY = Math.max(openCoord, closeCoord);
-                    const height = Math.max(bottomY - topY, 2);
+                    const height = Math.max(bottomY - topY, 1.5);
                     
-                    // 현재 뷰포트에 표시되는 데이터 개수에 따른 적정 두께 산출
                     const visibleCount = x.max - x.min + 1;
                     const calculatedWidth = Math.max((x.width / visibleCount) * 0.7, 2);
 
@@ -196,10 +198,11 @@
             }
         };
 
-        // 1년치 데이터 생성기 (이동평균선 정확한 계산 포함)
+        // 1년치 데이터 및 정확한 이동평균선(5, 20, 60) 생성기
         function generateOneYearData() {
             const dates = [];
             const rawCandles = [];
+            const closes = [];
             const ma5 = [];
             const ma20 = [];
             const ma60 = [];
@@ -208,8 +211,8 @@
 
             let currentDate = new Date(2025, 7, 11);
             let basePrice = 150;
-            const prices = [];
 
+            // 1. 데이터 기본 생성
             for (let i = 0; i < 250; i++) {
                 currentDate.setDate(currentDate.getDate() + 1);
                 if (currentDate.getDay() === 0) currentDate.setDate(currentDate.getDate() + 1);
@@ -225,24 +228,39 @@
                 let h = Math.max(o, c) + Math.random() * 3;
                 let l = Math.min(o, c) - Math.random() * 3;
                 basePrice = c;
-                prices.push(c);
 
                 rawCandles.push({ o, h, l, c });
-
-                // 이동평균선 계산
-                const getMA = (period) => {
-                    if (i < period - 1) return null;
-                    const slice = prices.slice(i - period + 1, i + 1);
-                    const sum = slice.reduce((a, b) => a + b, 0);
-                    return sum / period;
-                };
-
-                ma5.push(getMA(5));
-                ma20.push(getMA(20));
-                ma60.push(getMA(60));
+                closes.push(c);
 
                 rsiData.push(Math.floor(30 + Math.random() * 45));
                 volumeData.push(Math.floor(30 + Math.random() * 70));
+            }
+
+            // 2. 정확한 이동평균선 계산 (종가 기준 누적 평균)
+            for (let i = 0; i < 250; i++) {
+                // 5일선
+                if (i >= 4) {
+                    const sum5 = closes.slice(i - 4, i + 1).reduce((a, b) => a + b, 0);
+                    ma5.push(sum5 / 5);
+                } else {
+                    ma5.push(null);
+                }
+
+                // 20일선
+                if (i >= 19) {
+                    const sum20 = closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0);
+                    ma20.push(sum20 / 20);
+                } else {
+                    ma20.push(null);
+                }
+
+                // 60일선
+                if (i >= 59) {
+                    const sum60 = closes.slice(i - 59, i + 1).reduce((a, b) => a + b, 0);
+                    ma60.push(sum60 / 60);
+                } else {
+                    ma60.push(null);
+                }
             }
 
             return { dates, rawCandles, ma5, ma20, ma60, rsiData, volumeData };
@@ -258,7 +276,7 @@
                     wheel: { enabled: true }, 
                     pinch: { enabled: true }, 
                     mode: 'x',
-                    onZoom: () => priceChart.update('none') // 줌 시 캔들 리렌더링 실시간 연동
+                    onZoom: () => priceChart.update('none') 
                 },
                 pan: { 
                     enabled: true, 
@@ -267,7 +285,7 @@
                 }
             };
 
-            // 1. Price Chart (5일, 20일, 60일선 + 캔들스틱)
+            // 1. Price Chart (캔들스틱 플러그인 + 5일, 20일, 60일선)
             const ctxPrice = document.getElementById('priceChart').getContext('2d');
             priceChart = new Chart(ctxPrice, {
                 type: 'line', 
@@ -275,9 +293,14 @@
                     labels: stockData.dates,
                     datasets: [
                         {
+                            label: '캔들스틱 백업용',
+                            data: [], // 플러그인 구동을 위한 더미
+                            hidden: true
+                        },
+                        {
                             label: '5일선',
                             data: stockData.ma5,
-                            borderColor: '#3B82F6',
+                            borderColor: '#3B82F6', // 파란색
                             borderWidth: 1.2,
                             pointRadius: 0,
                             tension: 0.1
@@ -285,7 +308,7 @@
                         {
                             label: '20일선',
                             data: stockData.ma20,
-                            borderColor: '#10B981',
+                            borderColor: '#10B981', // 초록색
                             borderWidth: 1.2,
                             pointRadius: 0,
                             tension: 0.1
@@ -293,17 +316,13 @@
                         {
                             label: '60일선',
                             data: stockData.ma60,
-                            borderColor: '#F59E0B', // 주황색으로 구별력 강화
+                            borderColor: '#F59E0B', // 주황색
                             borderWidth: 1.5,
                             pointRadius: 0,
                             tension: 0.1
-                        },
-                        {
-                            label: '캔들데이터',
-                            data: [], // 캔들 플러그인 전용 백업 데이터셋
-                            candles: stockData.rawCandles
                         }
-                    ]
+                    ],
+                    candles: stockData.rawCandles // 캔들 데이터 주입
                 },
                 plugins: [candlestickPlugin],
                 options: {
@@ -325,7 +344,6 @@
                         y: { 
                             grid: { color: '#F3F4F6' }, 
                             ticks: { color: '#6B7280', font: { size: 10 } },
-                            // Y축 하드코딩 제거 및 오토 스케일링 활성화
                             grace: '5%' 
                         }
                     }
@@ -398,21 +416,20 @@
 
         function loadStockData() {
             const ticker = document.getElementById('tickerInput').value.toUpperCase() || 'AAPL';
-            document.getElementById('chartTitle').innerText = `${ticker} - 1년 일봉 차트 & 이평선`;
+            document.getElementById('chartTitle').innerText = `${ticker} - 1년 일봉 차트 & 이동평균선`;
             
             const newData = generateOneYearData();
             
             priceChart.data.labels = newData.dates;
-            priceChart.data.datasets[0].data = newData.ma5;
-            priceChart.data.datasets[1].data = newData.ma20;
-            priceChart.data.datasets[2].data = newData.ma60;
-            priceChart.data.datasets[3].candles = newData.rawCandles;
+            priceChart.data.datasets[1].data = newData.ma5;
+            priceChart.data.datasets[2].data = newData.ma20;
+            priceChart.data.datasets[3].data = newData.ma60;
+            priceChart.data.candles = newData.rawCandles;
 
             subChart.data.labels = newData.dates;
             subChart.data.datasets[0].data = newData.rsiData;
             subChart.data.datasets[1].data = newData.volumeData;
 
-            // 줌 초기화 후 업데이트
             if (priceChart.resetZoom) priceChart.resetZoom();
             if (subChart.resetZoom) subChart.resetZoom();
 
