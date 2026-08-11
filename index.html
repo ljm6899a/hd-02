@@ -4,105 +4,276 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Personal Stock Dashboard</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        tailwind.config = { theme: { extend: { colors: { akira: '#DA291C' } } } }
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        akira: '#DA291C', // 아키라 테마 레드
+                    }
+                }
+            }
+        }
     </script>
     <style>
-        body { background-color: #FAFAFA; color: #1F2937; font-family: sans-serif; }
-        .white-card { background: #FFFFFF; border: 1px solid #E5E7EB; }
+        body {
+            background-color: #FAFAFA;
+            color: #1F2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .white-card {
+            background: #FFFFFF;
+            border: 1px solid #E5E7EB;
+        }
     </style>
 </head>
-<body class="h-screen flex flex-col">
+<body class="h-screen w-screen overflow-hidden flex flex-col">
 
-    <!-- Top Bar -->
-    <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-        <h1 class="text-xl font-black tracking-tighter">STOCK<span class="text-akira">BOARD</span></h1>
-        <button class="text-gray-500 hover:text-akira transition-colors text-2xl">⚙️</button>
+    <!-- Top Bar: Macro Indices Ticker -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-3">
+            <span class="text-xl font-black tracking-tighter text-gray-900">STOCK<span class="text-akira">BOARD</span></span>
+            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v1.0 Landing</span>
+        </div>
+        <!-- Macro Indices Crawler Bar -->
+        <div class="flex space-x-6 text-sm overflow-x-auto font-medium">
+            <div class="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                <span class="text-gray-500">USDKRW</span>
+                <span class="font-bold text-akira">1,485.00</span>
+                <span class="text-xs text-akira">+0.2%</span>
+            </div>
+            <div class="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                <span class="text-gray-500">KOSPI</span>
+                <span class="font-bold text-gray-900">2,680.15</span>
+                <span class="text-xs text-gray-500">-0.4%</span>
+            </div>
+            <div class="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                <span class="text-gray-500">S&P 500</span>
+                <span class="font-bold text-gray-900">5,230.40</span>
+                <span class="text-xs text-gray-500">+0.8%</span>
+            </div>
+        </div>
     </header>
 
-    <main class="flex-1 flex p-6 gap-6 overflow-hidden">
+    <!-- Main Content: Split Screen (Left / Right) -->
+    <main class="flex-1 flex overflow-hidden p-6 gap-6">
         
-        <!-- LEFT: Charts -->
-        <section class="w-1/2 flex flex-col gap-4 overflow-y-auto pr-2">
-            <!-- Ticker & Period Buttons -->
-            <div class="white-card p-4 shadow-sm rounded-xl flex items-center gap-4">
-                <input type="text" id="tickerInput" placeholder="티커 입력..." class="flex-1 bg-gray-50 border border-gray-200 rounded px-4 py-2 text-sm focus:outline-none focus:border-akira">
-                <div class="flex gap-1">
-                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">일</button>
-                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">주</button>
-                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">월</button>
-                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">년</button>
+        <!-- LEFT HALF: Macro & Stock Charts -->
+        <section class="w-1/2 flex flex-col space-y-4 overflow-y-auto pr-2">
+            <!-- Stock Ticker Selector -->
+            <div class="white-card p-4 flex items-center space-x-3 shadow-sm rounded-xl">
+                <input type="text" id="tickerInput" placeholder="종목명 또는 티커 입력 (예: AAPL, 삼성전자)" 
+                       class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-akira text-gray-900 placeholder-gray-400">
+                <button onclick="loadStockData()" class="bg-gray-900 hover:bg-akira text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors">
+                    차트 로드
+                </button>
+            </div>
+
+            <!-- Chart Container Area -->
+            <div class="flex-1 flex flex-col space-y-4">
+                <!-- Main Price & Bollinger Band Chart -->
+                <div class="white-card rounded-xl p-4 flex flex-col h-1/2 shadow-sm">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 가격 & 볼린저밴드</h3>
+                        <span class="text-xs text-akira bg-red-50 px-2 py-0.5 rounded font-bold">일평균 / 볼린저</span>
+                    </div>
+                    <div class="relative flex-1 w-full" style="min-height: 150px;">
+                        <canvas id="mainChart"></canvas>
+                    </div>
                 </div>
-                <button onclick="loadCharts()" class="bg-gray-900 hover:bg-akira text-white font-bold px-4 py-2 rounded text-xs transition-colors">LOAD</button>
-            </div>
 
-            <!-- Main Chart: Price + Moving Averages -->
-            <div class="white-card p-4 shadow-sm rounded-xl h-64">
-                <canvas id="priceChart"></canvas>
-            </div>
-
-            <!-- Sub Chart: Volume + RSI (Dual Axis) -->
-            <div class="white-card p-4 shadow-sm rounded-xl h-48">
-                <canvas id="subChart"></canvas>
+                <!-- Sub Charts (Volume & RSI) -->
+                <div class="grid grid-cols-2 gap-4 h-1/3">
+                    <!-- Volume Chart -->
+                    <div class="white-card rounded-xl p-3 flex flex-col shadow-sm">
+                        <span class="text-xs font-bold text-gray-500 mb-1">거래량 (Volume)</span>
+                        <div class="relative flex-1 w-full" style="min-height: 100px;">
+                            <canvas id="volumeChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- RSI Chart -->
+                    <div class="white-card rounded-xl p-3 flex flex-col shadow-sm">
+                        <span class="text-xs font-bold text-gray-500 mb-1">RSI 지표</span>
+                        <div class="relative flex-1 w-full" style="min-height: 100px;">
+                            <canvas id="rsiChart"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
-        <!-- RIGHT: Navigation -->
-        <section class="w-1/2 grid grid-cols-2 gap-4 h-full">
-            <button onclick="navigateTo('뉴스')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl">
-                <span class="text-akira font-black">01</span><span class="text-2xl font-black">NEWS</span>
-            </button>
-            <button onclick="navigateTo('지표 판단')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl">
-                <span class="text-akira font-black">02</span><span class="text-2xl font-black">JUDGEMENT</span>
-            </button>
-            <button onclick="navigateTo('포트폴리오')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl col-span-2">
-                <span class="text-akira font-black">03</span><span class="text-2xl font-black">PORTFOLIO</span>
-            </button>
+        <!-- RIGHT HALF: Grid Navigation Buttons -->
+        <section class="w-1/2 flex flex-col justify-center items-center p-8 white-card rounded-2xl shadow-sm">
+            <div class="w-full max-w-lg mb-8">
+                <h2 class="text-xl font-black tracking-tight text-gray-900 mb-1">DASHBOARD NAVIGATION</h2>
+                <p class="text-xs text-gray-500 font-medium">원하시는 분석 탭을 선택하여 심층 인사이트를 확인하세요.</p>
+            </div>
+
+            <!-- Grid Menu (2x2) -->
+            <div class="grid grid-cols-2 gap-6 w-full max-w-lg">
+                <!-- News Button -->
+                <button onclick="navigateTo('news')" class="group relative white-card hover:border-akira p-6 rounded-2xl transition-all duration-300 text-left flex flex-col justify-between h-40 shadow-sm hover:shadow-md">
+                    <span class="text-akira text-xs font-black">01</span>
+                    <div>
+                        <h3 class="text-lg font-black text-gray-900 group-hover:text-akira transition-colors">뉴스</h3>
+                        <p class="text-xs text-gray-400 mt-1">실시간 금융 뉴스 분석</p>
+                    </div>
+                </button>
+
+                <!-- Indicator Judgment Button -->
+                <button onclick="navigateTo('judgment')" class="group relative white-card hover:border-akira p-6 rounded-2xl transition-all duration-300 text-left flex flex-col justify-between h-40 shadow-sm hover:shadow-md">
+                    <span class="text-akira text-xs font-black">02</span>
+                    <div>
+                        <h3 class="text-lg font-black text-gray-900 group-hover:text-akira transition-colors">지표 판단</h3>
+                        <p class="text-xs text-gray-400 mt-1">퀀트 매수·매도 진단</p>
+                    </div>
+                </button>
+
+                <!-- Ontology Button -->
+                <button onclick="navigateTo('ontology')" class="group relative white-card hover:border-akira p-6 rounded-2xl transition-all duration-300 text-left flex flex-col justify-between h-40 shadow-sm hover:shadow-md">
+                    <span class="text-akira text-xs font-black">03</span>
+                    <div>
+                        <h3 class="text-lg font-black text-gray-900 group-hover:text-akira transition-colors">온톨로지</h3>
+                        <p class="text-xs text-gray-400 mt-1">산업 공급망 연관 관계</p>
+                    </div>
+                </button>
+
+                <!-- Personal Settings Button -->
+                <button onclick="navigateTo('settings')" class="group relative white-card hover:border-akira p-6 rounded-2xl transition-all duration-300 text-left flex flex-col justify-between h-40 shadow-sm hover:shadow-md">
+                    <span class="text-akira text-xs font-black">04</span>
+                    <div>
+                        <h3 class="text-lg font-black text-gray-900 group-hover:text-akira transition-colors">개인설정</h3>
+                        <p class="text-xs text-gray-400 mt-1">포트폴리오 환경 설정</p>
+                    </div>
+                </button>
+            </div>
         </section>
+
     </main>
 
+    <!-- JavaScript for Charts & Interactivity -->
     <script>
-        let priceChart, subChart;
-        const labels = ['1일', '2일', '3일', '4일', '5일', '6일', '7일'];
+        let mainChart, volumeChart, rsiChart;
 
-        function initCharts() {
-            // Price Chart (일목균형 및 이평선 반영 구조)
-            priceChart = new Chart(document.getElementById('priceChart'), {
+        window.addEventListener('DOMContentLoaded', () => {
+            const labels = ['5일전', '4일전', '3일전', '2일전', '어제', '오늘'];
+            
+            // Main Price & Bollinger Bands Chart
+            const ctxMain = document.getElementById('mainChart').getContext('2d');
+            mainChart = new Chart(ctxMain, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: '주가', data: [150, 155, 153, 160, 158, 165, 170], borderColor: '#DA291C', tension: 0.1 },
-                        { label: '5일', data: [148, 150, 152, 155, 157, 160, 162], borderColor: '#9CA3AF', borderDash: [5, 5], borderWidth: 1 },
-                        { label: '20일', data: [140, 142, 145, 147, 150, 152, 155], borderColor: '#6B7280', borderWidth: 1 },
-                        { label: '60일', data: [130, 132, 135, 137, 140, 142, 145], borderColor: '#374151', borderWidth: 1 }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-
-            // Sub Chart (Volume Bar + RSI Line Dual Axis)
-            subChart = new Chart(document.getElementById('subChart'), {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: '거래량', data: [500, 700, 400, 800, 600, 900, 750], backgroundColor: '#E5E7EB', yAxisID: 'y' },
-                        { label: 'RSI', data: [45, 55, 50, 65, 60, 70, 68], borderColor: '#DA291C', type: 'line', yAxisID: 'y1' }
+                        {
+                            label: '상단 밴드',
+                            data: [180, 182, 181, 185, 187, 190],
+                            borderColor: '#9CA3AF',
+                            borderWidth: 1,
+                            borderDash: [4, 4],
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: '하단 밴드',
+                            data: [170, 174, 171, 175, 177, 180],
+                            borderColor: '#9CA3AF',
+                            borderWidth: 1,
+                            borderDash: [4, 4],
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: '일평균 주가',
+                            data: [175, 178, 176, 180, 182, 185],
+                            borderColor: '#DA291C',
+                            backgroundColor: 'rgba(218, 41, 28, 0.05)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            fill: true
+                        }
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: { y: { position: 'left' }, y1: { position: 'right', grid: { drawOnChartArea: false } } }
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#6B7280', font: { size: 10 } } },
+                        y: { grid: { color: '#F3F4F6' }, ticks: { color: '#6B7280', font: { size: 10 } } }
+                    }
                 }
             });
+
+            // Volume Chart
+            const ctxVolume = document.getElementById('volumeChart').getContext('2d');
+            volumeChart = new Chart(ctxVolume, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: [42, 38, 55, 60, 48, 72],
+                        backgroundColor: '#1F2937',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            });
+
+            // RSI Chart
+            const ctxRsi = document.getElementById('rsiChart').getContext('2d');
+            rsiChart = new Chart(ctxRsi, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: [52, 58, 55, 63, 61, 68],
+                        borderColor: '#DA291C',
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { min: 20, max: 80, grid: { color: '#F3F4F6' }, ticks: { color: '#6B7280', font: { size: 9 } } }
+                    }
+                }
+            });
+        });
+
+        function loadStockData() {
+            const ticker = document.getElementById('tickerInput').value.toUpperCase() || 'AAPL';
+            document.getElementById('chartTitle').innerText = `${ticker} - 가격 & 볼린저밴드`;
+            
+            const randomFactor = () => (Math.random() * 20 - 10);
+            const newData = [150+randomFactor(), 155+randomFactor(), 153+randomFactor(), 160+randomFactor(), 158+randomFactor(), 165+randomFactor()];
+            
+            mainChart.data.datasets[2].data = newData;
+            mainChart.update();
+            volumeChart.update();
+            rsiChart.update();
         }
 
-        function loadCharts() { alert("데이터 로딩 로직 연동 구간"); }
-        function navigateTo(t) { alert(t + " 페이지로 이동"); }
-        window.onload = initCharts;
+        function navigateTo(tabName) {
+            alert(`${tabName.toUpperCase()} 페이지로 이동합니다!`);
+        }
     </script>
 </body>
 </html>
