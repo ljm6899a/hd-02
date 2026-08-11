@@ -1,125 +1,108 @@
-const COINS = [
-  { sym: 'BTC', name: '비트코인',   price: 84_500_000, chg: 2.4,  color: '#f7931a', amount: 0.085 },
-  { sym: 'ETH', name: '이더리움',   price: 3_120_000,  chg: 3.8,  color: '#627eea', amount: 1.2 },
-  { sym: 'SOL', name: '솔라나',     price: 192_000,    chg: -1.2, color: '#9945ff', amount: 8.5 },
-  { sym: 'BNB', name: '바이낸스',   price: 412_000,    chg: 0.8,  color: '#f3ba2f', amount: 2.4 },
-  { sym: 'XRP', name: '리플',       price: 624,        chg: -0.5, color: '#23292f', amount: 1240 },
-  { sym: 'ADA', name: '카르다노',   price: 580,        chg: 1.4,  color: '#0033ad', amount: 800 },
-];
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Personal Stock Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { akira: '#DA291C' } } } }
+    </script>
+    <style>
+        body { background-color: #FAFAFA; color: #1F2937; font-family: sans-serif; }
+        .white-card { background: #FFFFFF; border: 1px solid #E5E7EB; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
 
-function fmt(v) {
-  if (v >= 10000) return v.toLocaleString('ko-KR');
-  return v.toString();
-}
+    <!-- Top Bar -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+        <h1 class="text-xl font-black tracking-tighter">STOCK<span class="text-akira">BOARD</span></h1>
+        <button class="text-gray-500 hover:text-akira transition-colors text-2xl">⚙️</button>
+    </header>
 
-// 인기 코인
-const coinList = document.getElementById('coinList');
-COINS.forEach((c, i) => {
-  const el = document.createElement('li');
-  el.className = 'coin' + (i === 0 ? ' active' : '');
-  el.innerHTML = `
-    <div class="coin-ic" style="background:${c.color}22;color:${c.color}">${c.sym[0]}</div>
-    <div class="coin-info"><b>${c.name}</b><span>${c.sym}</span></div>
-    <div class="coin-price">₩ ${fmt(c.price)}</div>
-    <div class="coin-chg ${c.chg >= 0 ? 'up' : 'down'}">${c.chg >= 0 ? '▲' : '▼'} ${Math.abs(c.chg).toFixed(2)}%</div>
-  `;
-  el.addEventListener('click', () => {
-    document.querySelectorAll('.coin').forEach((x) => x.classList.remove('active'));
-    el.classList.add('active');
-    document.getElementById('chartCoin').textContent = `${c.sym} / KRW`;
-    updateChart(c);
-  });
-  coinList.appendChild(el);
-});
+    <main class="flex-1 flex p-6 gap-6 overflow-hidden">
+        
+        <!-- LEFT: Charts -->
+        <section class="w-1/2 flex flex-col gap-4 overflow-y-auto pr-2">
+            <!-- Ticker & Period Buttons -->
+            <div class="white-card p-4 shadow-sm rounded-xl flex items-center gap-4">
+                <input type="text" id="tickerInput" placeholder="티커 입력..." class="flex-1 bg-gray-50 border border-gray-200 rounded px-4 py-2 text-sm focus:outline-none focus:border-akira">
+                <div class="flex gap-1">
+                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">일</button>
+                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">주</button>
+                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">월</button>
+                    <button class="text-xs px-2 py-1 font-bold hover:text-akira">년</button>
+                </div>
+                <button onclick="loadCharts()" class="bg-gray-900 hover:bg-akira text-white font-bold px-4 py-2 rounded text-xs transition-colors">LOAD</button>
+            </div>
 
-// 보유 자산
-const holdings = document.getElementById('holdings');
-let total = 0, totalCost = 0;
-COINS.forEach((c) => {
-  const avgPrice = c.price * (1 - c.chg / 100 * (0.5 + Math.random() * 1.5)); // 가짜 평단
-  const value = c.price * c.amount;
-  const cost = avgPrice * c.amount;
-  const pnl = value - cost;
-  const pct = (pnl / cost) * 100;
-  total += value; totalCost += cost;
+            <!-- Main Chart: Price + Moving Averages -->
+            <div class="white-card p-4 shadow-sm rounded-xl h-64">
+                <canvas id="priceChart"></canvas>
+            </div>
 
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td>${c.sym} <span style="color:var(--muted);font-weight:400">${c.name}</span></td>
-    <td>${c.amount}</td>
-    <td>₩ ${fmt(Math.round(avgPrice))}</td>
-    <td>₩ ${fmt(c.price)}</td>
-    <td class="${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}₩ ${fmt(Math.round(pnl))}</td>
-    <td class="${pct >= 0 ? 'up' : 'down'}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</td>
-  `;
-  holdings.appendChild(tr);
-});
+            <!-- Sub Chart: Volume + RSI (Dual Axis) -->
+            <div class="white-card p-4 shadow-sm rounded-xl h-48">
+                <canvas id="subChart"></canvas>
+            </div>
+        </section>
 
-// 포트폴리오 카운트업
-const portfolioEl = document.getElementById('portfolio');
-const totalPnl = total - totalCost;
-const totalPct = (totalPnl / totalCost) * 100;
-let n = 0;
-const step = total / 60;
-const tt = setInterval(() => {
-  n += step;
-  if (n >= total) { n = total; clearInterval(tt); }
-  portfolioEl.textContent = '₩ ' + Math.floor(n).toLocaleString('ko-KR');
-}, 18);
-const chgEl = document.getElementById('change');
-chgEl.textContent = `${totalPnl >= 0 ? '▲' : '▼'} ₩ ${Math.abs(Math.floor(totalPnl)).toLocaleString('ko-KR')} (${totalPct >= 0 ? '+' : ''}${totalPct.toFixed(2)}%)`;
-chgEl.className = 'change ' + (totalPnl >= 0 ? 'up' : 'down');
+        <!-- RIGHT: Navigation -->
+        <section class="w-1/2 grid grid-cols-2 gap-4 h-full">
+            <button onclick="navigateTo('뉴스')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl">
+                <span class="text-akira font-black">01</span><span class="text-2xl font-black">NEWS</span>
+            </button>
+            <button onclick="navigateTo('지표 판단')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl">
+                <span class="text-akira font-black">02</span><span class="text-2xl font-black">JUDGEMENT</span>
+            </button>
+            <button onclick="navigateTo('포트폴리오')" class="white-card p-8 flex flex-col justify-between hover:border-akira transition-all rounded-2xl col-span-2">
+                <span class="text-akira font-black">03</span><span class="text-2xl font-black">PORTFOLIO</span>
+            </button>
+        </section>
+    </main>
 
-// 가격 차트
-let chart;
-function makeData(base, chg, n = 24) {
-  const out = [];
-  let v = base * (1 - chg / 100);
-  for (let i = 0; i < n; i++) {
-    v *= 1 + (Math.random() - 0.5 + chg / 100 / n) * 0.02;
-    out.push(v);
-  }
-  out.push(base);
-  return out;
-}
-function updateChart(c) {
-  const data = makeData(c.price, c.chg);
-  if (chart) chart.destroy();
-  chart = new Chart(document.getElementById('priceChart'), {
-    type: 'line',
-    data: {
-      labels: data.map((_, i) => `${i}h`),
-      datasets: [{
-        data,
-        borderColor: c.chg >= 0 ? '#16c784' : '#ea3943',
-        backgroundColor: c.chg >= 0 ? 'rgba(22,199,132,.08)' : 'rgba(234,57,67,.08)',
-        tension: .35, fill: true, pointRadius: 0, borderWidth: 2,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { grid: { color: '#1a2138' }, ticks: { color: '#8088a3', callback: (v) => '₩' + (v / 1_000_000).toFixed(1) + 'M' } },
-        x: { grid: { display: false }, ticks: { color: '#8088a3', autoSkip: true, maxTicksLimit: 6 } },
-      },
-    },
-  });
-}
-updateChart(COINS[0]);
+    <script>
+        let priceChart, subChart;
+        const labels = ['1일', '2일', '3일', '4일', '5일', '6일', '7일'];
 
-// 시간 버튼 토글
-document.querySelectorAll('.t-btn').forEach((b) => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('.t-btn').forEach((x) => x.classList.remove('active'));
-    b.classList.add('active');
-  });
-});
+        function initCharts() {
+            // Price Chart (일목균형 및 이평선 반영 구조)
+            priceChart = new Chart(document.getElementById('priceChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '주가', data: [150, 155, 153, 160, 158, 165, 170], borderColor: '#DA291C', tension: 0.1 },
+                        { label: '5일', data: [148, 150, 152, 155, 157, 160, 162], borderColor: '#9CA3AF', borderDash: [5, 5], borderWidth: 1 },
+                        { label: '20일', data: [140, 142, 145, 147, 150, 152, 155], borderColor: '#6B7280', borderWidth: 1 },
+                        { label: '60일', data: [130, 132, 135, 137, 140, 142, 145], borderColor: '#374151', borderWidth: 1 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
 
-// 실시간 가격 시뮬레이션 (3초마다 ±0.3% 흔들기)
-setInterval(() => {
-  COINS.forEach((c) => { c.price *= 1 + (Math.random() - 0.5) * 0.006; });
-  document.querySelectorAll('.coin').forEach((el, i) => {
-    el.querySelector('.coin-price').textContent = '₩ ' + fmt(Math.round(COINS[i].price));
-  });
-}, 3000);
+            // Sub Chart (Volume Bar + RSI Line Dual Axis)
+            subChart = new Chart(document.getElementById('subChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '거래량', data: [500, 700, 400, 800, 600, 900, 750], backgroundColor: '#E5E7EB', yAxisID: 'y' },
+                        { label: 'RSI', data: [45, 55, 50, 65, 60, 70, 68], borderColor: '#DA291C', type: 'line', yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { y: { position: 'left' }, y1: { position: 'right', grid: { drawOnChartArea: false } } }
+                }
+            });
+        }
+
+        function loadCharts() { alert("데이터 로딩 로직 연동 구간"); }
+        function navigateTo(t) { alert(t + " 페이지로 이동"); }
+        window.onload = initCharts;
+    </script>
+</body>
+</html>
