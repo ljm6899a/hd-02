@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Personal Stock Dashboard</title>
+    <title>My Personal Stock Dashboard v2.2</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN -->
@@ -39,7 +39,7 @@
     <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-3">
             <span class="text-xl font-black tracking-tighter text-gray-900">STOCK<span class="text-akira">BOARD</span></span>
-            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v2.1 Exact X-Axis Length Match</span>
+            <span class="text-xs text-akira bg-red-50 px-2.5 py-1 font-bold rounded">v2.2 Pro Edition</span>
         </div>
         <!-- Settings Gear Button -->
         <button class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 hover:text-akira hover:border-akira transition-colors">
@@ -58,11 +58,11 @@
                        class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-akira text-gray-900 placeholder-gray-400">
                 
                 <!-- Period Buttons (일/주/월/년) -->
-                <div class="flex bg-gray-50 p-1 rounded-lg border border-gray-200">
-                    <button class="px-3 py-1 text-xs font-bold text-gray-700 hover:text-akira rounded bg-white shadow-sm">일</button>
-                    <button class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded">주</button>
-                    <button class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded">월</button>
-                    <button class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded">년</button>
+                <div class="flex bg-gray-50 p-1 rounded-lg border border-gray-200" id="periodGroup">
+                    <button onclick="changePeriod('D', this)" data-period="D" class="px-3 py-1 text-xs font-bold text-white rounded bg-gray-900 shadow-sm transition-all">일</button>
+                    <button onclick="changePeriod('W', this)" data-period="W" class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded transition-all">주</button>
+                    <button onclick="changePeriod('M', this)" data-period="M" class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded transition-all">월</button>
+                    <button onclick="changePeriod('Y', this)" data-period="Y" class="px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded transition-all">년</button>
                 </div>
 
                 <button onclick="loadStockData()" class="bg-gray-900 hover:bg-akira text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors">
@@ -75,8 +75,8 @@
                 <!-- Main Candlestick Custom Chart -->
                 <div class="white-card rounded-xl p-4 flex flex-col h-1/2 shadow-sm relative">
                     <div class="flex justify-between items-center mb-1">
-                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 1년 일봉 차트 & 이동평균선</h3>
-                        <span class="text-xs text-akira bg-red-50 px-2 py-0.5 rounded font-bold"></span>
+                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 일봉 차트 & 볼린저밴드</h3>
+                        <span class="text-xs text-akira bg-red-50 px-2 py-0.5 rounded font-bold">Bollinger Bands</span>
                     </div>
                     <div class="relative flex-1 w-full" style="min-height: 150px;">
                         <canvas id="priceChart"></canvas>
@@ -149,11 +149,19 @@
     <script>
         let priceChart, subChart;
         let stockData;
+        let currentPeriod = 'D'; // 기본 일봉
         let isSyncing = false; 
 
-        // 정교한 캔들스틱 렌더링 플러그인
+        // 캔들스틱 영역 이탈 방지 클리핑 적용 플러그인
         const candlestickPlugin = {
             id: 'candlestickCustom',
+            beforeDraw(chart) {
+                const { ctx, chartArea } = chart;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+                ctx.clip();
+            },
             afterDraw(chart) {
                 const { ctx, scales: { x, y } } = chart;
                 const meta = chart.getDatasetMeta(0); 
@@ -162,7 +170,6 @@
                 const candles = chart.data.candles;
                 if (!candles) return;
 
-                ctx.save();
                 candles.forEach((candle, index) => {
                     const xCoord = x.getPixelForValue(index);
                     if (xCoord < x.left - 20 || xCoord > x.right + 20) return;
@@ -194,58 +201,79 @@
                     ctx.fillStyle = color;
                     ctx.fillRect(xCoord - calculatedWidth / 2, topY, calculatedWidth, height);
                 });
-                ctx.restore();
+                ctx.restore(); // beforeDraw에서 연 save 복원
             }
         };
 
-        // 1년치 데이터 및 이동평균선(5, 20, 60) 생성기
-        function generateOneYearData() {
+        // 기간(일/주/월/년)별 데이터 및 볼린저 밴드 생성기
+        function generateStockData(period) {
             const dates = [];
             const rawCandles = [];
             const closes = [];
-            const ma5 = [];
             const ma20 = [];
-            const ma60 = [];
+            const upperBand = [];
+            const lowerBand = [];
             const rsiData = [];
             const volumeData = [];
 
-            let currentDate = new Date(2025, 7, 11);
+            let count = 250;
+            let stepDays = 1;
+            let formatType = 'YYYY.MM.DD';
+
+            if (period === 'W') { count = 104; stepDays = 7; }       // 약 2년치 주봉
+            else if (period === 'M') { count = 60; stepDays = 30; }   // 약 5년치 월봉
+            else if (period === 'Y') { count = 10; stepDays = 365; }  // 10년치 연봉
+
+            let currentDate = new Date(2023, 0, 1);
             let basePrice = 150;
 
-            for (let i = 0; i < 250; i++) {
-                currentDate.setDate(currentDate.getDate() + 1);
-                if (currentDate.getDay() === 0) currentDate.setDate(currentDate.getDate() + 1);
-                if (currentDate.getDay() === 6) currentDate.setDate(currentDate.getDate() + 2);
+            for (let i = 0; i < count; i++) {
+                currentDate.setDate(currentDate.getDate() + stepDays);
 
                 const yyyy = currentDate.getFullYear();
                 const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
                 const dd = String(currentDate.getDate()).padStart(2, '0');
-                dates.push(`${yyyy}.${mm}.${dd}`);
+                
+                if (period === 'M') dates.push(`${yyyy}.${mm}`);
+                else if (period === 'Y') dates.push(`${yyyy}`);
+                else dates.push(`${yyyy}.${mm}.${dd}`);
 
-                let o = basePrice + (Math.random() * 4 - 2);
-                let c = o + (Math.random() * 6 - 3);
-                let h = Math.max(o, c) + Math.random() * 3;
-                let l = Math.min(o, c) - Math.random() * 3;
-                basePrice = c;
+                let o = basePrice + (Math.random() * 6 - 3);
+                let c = o + (Math.random() * 8 - 4);
+                let h = Math.max(o, c) + Math.random() * 4;
+                let l = Math.min(o, c) - Math.random() * 4;
+                basePrice = Math.max(l, 20); // 가격 방어
 
                 rawCandles.push({ o, h, l, c });
                 closes.push(c);
 
                 rsiData.push(Math.floor(30 + Math.random() * 45));
-                volumeData.push(Math.floor(30 + Math.random() * 70));
+                volumeData.push(Math.floor(50 + Math.random() * 150));
             }
 
-            for (let i = 0; i < 250; i++) {
-                ma5.push(i >= 4 ? closes.slice(i - 4, i + 1).reduce((a, b) => a + b, 0) / 5 : null);
-                ma20.push(i >= 19 ? closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0) / 20 : null);
-                ma60.push(i >= 59 ? closes.slice(i - 59, i + 1).reduce((a, b) => a + b, 0) / 60 : null);
+            // 이동평균 및 볼린저 밴드 계산 (기간 20 기준)
+            for (let i = 0; i < count; i++) {
+                const windowSize = Math.min(20, i + 1);
+                const slice = closes.slice(i - windowSize + 1, i + 1);
+                const sma = slice.reduce((a, b) => a + b, 0) / windowSize;
+                ma20.push(i >= 19 ? sma : null);
+
+                if (i >= 19) {
+                    const variance = slice.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / windowSize;
+                    const stdDev = Math.sqrt(variance);
+                    upperBand.push(sma + (stdDev * 2));
+                    lowerBand.push(sma - (stdDev * 2));
+                } else {
+                    upperBand.push(null);
+                    lowerBand.push(null);
+                }
             }
 
-            return { dates, rawCandles, ma5, ma20, ma60, rsiData, volumeData };
+            return { dates, rawCandles, ma20, upperBand, lowerBand, rsiData, volumeData };
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            stockData = generateOneYearData();
+            stockData = generateStockData(currentPeriod);
 
             const syncCharts = (sourceChart, targetChart) => {
                 if (isSyncing) return;
@@ -264,20 +292,16 @@
                     wheel: { enabled: true }, 
                     pinch: { enabled: true }, 
                     mode: 'x',
-                    onZoom: ({ chart }) => {
-                        syncCharts(chart, partnerChartGetter());
-                    } 
+                    onZoom: ({ chart }) => { syncCharts(chart, partnerChartGetter()); } 
                 },
                 pan: { 
                     enabled: true, 
                     mode: 'x',
-                    onPan: ({ chart }) => {
-                        syncCharts(chart, partnerChartGetter());
-                    }
+                    onPan: ({ chart }) => { syncCharts(chart, partnerChartGetter()); }
                 }
             });
 
-            // 1. Price Chart (좌측 Y축 폭 고정 및 우측 더미 Y축 추가로 하단 차트와 X축 박스 길이 완벽 일치)
+            // 1. Price Chart (볼린저 밴드 상/하단 및 20일선 포함)
             const ctxPrice = document.getElementById('priceChart').getContext('2d');
             priceChart = new Chart(ctxPrice, {
                 type: 'line', 
@@ -285,9 +309,9 @@
                     labels: stockData.dates,
                     datasets: [
                         { label: '캔들백업', data: [], hidden: true },
-                        { label: '5일선', data: stockData.ma5, borderColor: '#3B82F6', borderWidth: 1.2, pointRadius: 0, tension: 0.1 },
-                        { label: '20일선', data: stockData.ma20, borderColor: '#10B981', borderWidth: 1.2, pointRadius: 0, tension: 0.1 },
-                        { label: '60일선', data: stockData.ma60, borderColor: '#F59E0B', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }
+                        { label: '볼린저 상단', data: stockData.upperBand, borderColor: 'rgba(239, 68, 68, 0.4)', borderDash: [3, 3], borderWidth: 1, pointRadius: 0, tension: 0.1 },
+                        { label: '20일선 (중단)', data: stockData.ma20, borderColor: '#F59E0B', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+                        { label: '볼린저 하단', data: stockData.lowerBand, borderColor: 'rgba(59, 130, 246, 0.4)', borderDash: [3, 3], borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '-1', backgroundColor: 'rgba(59, 130, 246, 0.05)' }
                     ],
                     candles: stockData.rawCandles 
                 },
@@ -296,7 +320,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
+                        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 9, weight: 'bold' } } },
                         zoom: zoomOptions(() => subChart)
                     },
                     scales: {
@@ -320,7 +344,7 @@
                 }
             });
 
-            // 2. Sub Chart (좌측 거래량 축 폭, 우측 RSI 축 폭을 상단과 완벽 대칭 고정)
+            // 2. Sub Chart (RSI & 거래량)
             const ctxSub = document.getElementById('subChart').getContext('2d');
             subChart = new Chart(ctxSub, {
                 type: 'bar',
@@ -382,16 +406,33 @@
             });
         });
 
+        // 기간 변경 함수 (일/주/월/년)
+        function changePeriod(period, btnEl) {
+            currentPeriod = period;
+            
+            // 버튼 디자인 활성/비활성 토글
+            const buttons = document.querySelectorAll('#periodGroup button');
+            buttons.forEach(b => {
+                b.className = "px-3 py-1 text-xs font-bold text-gray-500 hover:text-akira rounded transition-all";
+                if(b === btnEl) {
+                    b.className = "px-3 py-1 text-xs font-bold text-white rounded bg-gray-900 shadow-sm transition-all";
+                }
+            });
+
+            loadStockData();
+        }
+
         function loadStockData() {
             const ticker = document.getElementById('tickerInput').value.toUpperCase() || 'AAPL';
-            document.getElementById('chartTitle').innerText = `${ticker} - 1년 일봉 차트 & 이동평균선`;
+            const periodNames = { 'D': '일봉', 'W': '주봉', 'M': '월봉', 'Y': '연봉' };
+            document.getElementById('chartTitle').innerText = `${ticker} - ${periodNames[currentPeriod]} 차트 & 볼린저밴드`;
             
-            const newData = generateOneYearData();
+            const newData = generateStockData(currentPeriod);
             
             priceChart.data.labels = newData.dates;
-            priceChart.data.datasets[1].data = newData.ma5;
+            priceChart.data.datasets[1].data = newData.upperBand;
             priceChart.data.datasets[2].data = newData.ma20;
-            priceChart.data.datasets[3].data = newData.ma60;
+            priceChart.data.datasets[3].data = newData.lowerBand;
             priceChart.data.candles = newData.rawCandles;
 
             subChart.data.labels = newData.dates;
