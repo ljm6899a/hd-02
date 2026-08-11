@@ -148,6 +148,7 @@
     <!-- JavaScript Engine -->
     <script>
         let priceChart, subChart;
+        let stockData;
         let isSyncing = false; 
 
         // 정교한 캔들스틱 렌더링 플러그인
@@ -308,12 +309,12 @@
                             grid: { color: '#F3F4F6' }, 
                             ticks: { color: '#6B7280', font: { size: 10 } },
                             grace: '5%',
-                            afterFit: (scale) => { scale.width = 55; } // 좌측 축 폭 고정
+                            afterFit: (scale) => { scale.width = 55; }
                         },
                         yDummyRight: { 
                             position: 'right',
-                            display: false, // 화면에는 안 보이지만 우측 공간을 잡아줌
-                            afterFit: (scale) => { scale.width = 45; } // 우측 축 폭을 하단 RSI 축과 정확히 일치시킴
+                            display: false, 
+                            afterFit: (scale) => { scale.width = 45; }
                         }
                     }
                 }
@@ -364,7 +365,7 @@
                             grid: { color: '#F3F4F6' },
                             ticks: { color: '#6B7280', font: { size: 9 } },
                             title: { display: true, text: '거래량', font: { size: 9, weight: 'bold' } },
-                            afterFit: (scale) => { scale.width = 55; } // 상단 좌측 축과 완벽 일치
+                            afterFit: (scale) => { scale.width = 55; }
                         },
                         yRsi: {
                             type: 'linear',
@@ -374,7 +375,7 @@
                             grid: { display: false },
                             ticks: { color: '#8B5CF6', font: { size: 9 } },
                             title: { display: true, text: 'RSI', font: { size: 9, weight: 'bold' } },
-                            afterFit: (scale) => { scale.width = 45; } // 상단 우측 더미 축과 완벽 일치
+                            afterFit: (scale) => { scale.width = 45; }
                         }
                     }
                 }
