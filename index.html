@@ -6,9 +6,13 @@
     <title>My Personal Stock Dashboard</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Moment.js (Required for Financial Chart time scales) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Chart.js Zoom Plugin for Pinch/Wheel Zoom & Pan -->
+    <!-- ChartJS Financial Plugin for Candlestick Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.min.js"></script>
+    <!-- Chart.js Zoom Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script>
         tailwind.config = {
@@ -16,6 +20,8 @@
                 extend: {
                     colors: {
                         akira: '#DA291C', // 아키라 테마 레드
+                        candleRed: '#EF4444', // 양봉 (빨강)
+                        candleBlue: '#3B82F6' // 음봉 (파랑)
                     }
                 }
             }
@@ -39,7 +45,7 @@
     <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-3">
             <span class="text-xl font-black tracking-tighter text-gray-900">STOCK<span class="text-akira">BOARD</span></span>
-            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v1.1 Pro</span>
+            <span class="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 font-semibold">v1.2 Pro Candlestick</span>
         </div>
         <!-- Settings Gear Button -->
         <button class="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 hover:text-akira hover:border-akira transition-colors">
@@ -72,10 +78,10 @@
 
             <!-- Chart Container Area -->
             <div class="flex-1 flex flex-col space-y-4">
-                <!-- Main Price & Moving Averages Chart -->
+                <!-- Main Candlestick Chart + Moving Averages -->
                 <div class="white-card rounded-xl p-4 flex flex-col h-1/2 shadow-sm relative">
                     <div class="flex justify-between items-center mb-1">
-                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 가격 & 이평선</h3>
+                        <h3 class="text-sm font-bold text-gray-800" id="chartTitle">Apple Inc. (AAPL) - 일봉 차트 & 이평선</h3>
                         <span class="text-xs text-akira bg-red-50 px-2 py-0.5 rounded font-bold">드래그: 줌 / 더블클릭: 초기화</span>
                     </div>
                     <div class="relative flex-1 w-full" style="min-height: 150px;">
@@ -145,67 +151,73 @@
 
     </main>
 
-    <!-- JavaScript for Charts & Interactivity -->
+    <!-- JavaScript for Candlestick Charts & Interactivity -->
     <script>
         let priceChart, subChart;
 
         window.addEventListener('DOMContentLoaded', () => {
-            // 연월일 포맷 (YYYY.MM.DD) 적용
-            const labels = [
-                '2026.08.01', '2026.08.02', '2026.08.03', '2026.08.04', '2026.08.05', 
-                '2026.08.06', '2026.08.07', '2026.08.08', '2026.08.09', '2026.08.10'
+            // 연월일 포맷 (YYYY-MM-DD 형식으로 financial 차트 호환성 확보)
+            const dates = [
+                '2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05', 
+                '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09', '2026-08-10'
             ];
-            
-            // 공통 줌 설정 (MTS 스타일: 마우스 드래그 줌 및 휠 줌 지원)
+
+            // 캔들스틱 데이터 포맷 (o: 시가, h: 고가, l: 저가, c: 종가)
+            const candleData = [
+                { x: '2026-08-01', o: 168, h: 173, l: 167, c: 170 }, // 양봉
+                { x: '2026-08-02', o: 170, h: 175, l: 169, c: 172 }, // 양봉
+                { x: '2026-08-03', o: 172, h: 174, l: 168, c: 169 }, // 음봉
+                { x: '2026-08-04', o: 169, h: 177, l: 169, c: 175 }, // 양봉
+                { x: '2026-08-05', o: 175, h: 180, l: 174, c: 178 }, // 양봉
+                { x: '2026-08-06', o: 178, h: 179, l: 172, c: 176 }, // 음봉
+                { x: '2026-08-07', o: 176, h: 182, l: 175, c: 180 }, // 양봉
+                { x: '2026-08-08', o: 180, h: 184, l: 179, c: 182 }, // 양봉
+                { x: '2026-08-09', o: 182, h: 183, l: 178, c: 181 }, // 음봉
+                { x: '2026-08-10', o: 181, h: 186, l: 180, c: 185 }  // 양봉
+            ];
+
             const zoomOptions = {
-                zoom: {
-                    wheel: { enabled: true },
-                    pinch: { enabled: true },
-                    mode: 'x',
-                },
-                pan: {
-                    enabled: true,
-                    mode: 'x',
-                }
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                pan: { enabled: true, mode: 'x' }
             };
 
-            // 1. Price Chart (연월일 X축 적용 + 이평선)
+            // 1. Candlestick Main Chart
             const ctxPrice = document.getElementById('priceChart').getContext('2d');
             priceChart = new Chart(ctxPrice, {
-                type: 'line',
+                type: 'candlestick',
                 data: {
-                    labels: labels,
                     datasets: [
                         {
-                            label: '주가',
-                            data: [170, 172, 169, 175, 178, 176, 180, 182, 181, 185],
-                            borderColor: '#DA291C',
-                            backgroundColor: 'rgba(218, 41, 28, 0.04)',
-                            borderWidth: 2.2,
-                            tension: 0.15,
-                            fill: true,
-                            pointRadius: 2,
-                            pointHoverRadius: 5
+                            label: '일봉',
+                            data: candleData,
+                            color: {
+                                up: '#EF4444',   // 양봉 빨간색
+                                down: '#3B82F6', // 음봉 파란색
+                                unchanged: '#9CA3AF'
+                            }
                         },
                         {
+                            type: 'line',
                             label: '5일선',
-                            data: [168, 170, 171, 172, 174, 175, 177, 179, 180, 182],
-                            borderColor: '#3B82F6',
-                            borderWidth: 1.2,
+                            data: [
+                                {x: '2026-08-01', y: 168}, {x: '2026-08-02', y: 170}, {x: '2026-08-03', y: 171},
+                                {x: '2026-08-04', y: 172}, {x: '2026-08-05', y: 174}, {x: '2026-08-06', y: 175},
+                                {x: '2026-08-07', y: 177}, {x: '2026-08-08', y: 179}, {x: '2026-08-09', y: 180}, {x: '2026-08-10', y: 182}
+                            ],
+                            borderColor: '#F59E0B', // 주황색 이평선
+                            borderWidth: 1.5,
                             pointRadius: 0
                         },
                         {
+                            type: 'line',
                             label: '20일선',
-                            data: [165, 166, 167, 168, 169, 170, 172, 173, 174, 175],
-                            borderColor: '#10B981',
-                            borderWidth: 1.2,
-                            pointRadius: 0
-                        },
-                        {
-                            label: '60일선',
-                            data: [160, 161, 162, 163, 164, 165, 166, 167, 168, 169],
-                            borderColor: '#9CA3AF',
-                            borderWidth: 1.2,
+                            data: [
+                                {x: '2026-08-01', y: 165}, {x: '2026-08-02', y: 166}, {x: '2026-08-03', y: 167},
+                                {x: '2026-08-04', y: 168}, {x: '2026-08-05', y: 169}, {x: '2026-08-06', y: 170},
+                                {x: '2026-08-07', y: 172}, {x: '2026-08-08', y: 173}, {x: '2026-08-09', y: 174}, {x: '2026-08-10', y: 175}
+                            ],
+                            borderColor: '#10B981', // 초록색 이평선
+                            borderWidth: 1.5,
                             pointRadius: 0
                         }
                     ]
@@ -213,44 +225,31 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
                     plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: { boxWidth: 10, font: { size: 10, weight: 'bold' }, color: '#4B5563' }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                            titleFont: { size: 11 },
-                            bodyFont: { size: 11 },
-                            padding: 10,
-                            cornerRadius: 6
-                        },
+                        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
                         zoom: zoomOptions
                     },
                     scales: {
-                        x: { 
-                            grid: { color: '#F3F4F6' }, 
-                            ticks: { color: '#6B7280', font: { size: 10 } } 
+                        x: {
+                            type: 'category',
+                            labels: dates,
+                            grid: { color: '#F3F4F6' },
+                            ticks: { color: '#6B7280', font: { size: 10 } }
                         },
-                        y: { 
-                            grid: { color: '#F3F4F6' }, 
-                            ticks: { color: '#6B7280', font: { size: 10 } } 
+                        y: {
+                            grid: { color: '#F3F4F6' },
+                            ticks: { color: '#6B7280', font: { size: 10 } }
                         }
                     }
                 }
             });
 
-            // 2. Sub Chart: RSI & Volume Dual Axis (연월일 X축 적용)
+            // 2. Sub Chart: RSI & Volume Dual Axis
             const ctxSub = document.getElementById('subChart').getContext('2d');
             subChart = new Chart(ctxSub, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: dates,
                     datasets: [
                         {
                             label: 'RSI',
@@ -275,29 +274,14 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
                     plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: { boxWidth: 10, font: { size: 10, weight: 'bold' }, color: '#4B5563' }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                            titleFont: { size: 11 },
-                            bodyFont: { size: 11 },
-                            padding: 10,
-                            cornerRadius: 6
-                        },
+                        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
                         zoom: zoomOptions
                     },
                     scales: {
-                        x: { 
-                            grid: { display: false }, 
-                            ticks: { color: '#6B7280', font: { size: 10 } } 
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#6B7280', font: { size: 10 } }
                         },
                         yVolume: {
                             type: 'linear',
@@ -322,12 +306,20 @@
 
         function loadStockData() {
             const ticker = document.getElementById('tickerInput').value.toUpperCase() || 'AAPL';
-            document.getElementById('chartTitle').innerText = `${ticker} - 가격 & 이평선`;
+            document.getElementById('chartTitle').innerText = `${ticker} - 일봉 차트 & 이평선`;
             
-            const randomFactor = () => (Math.random() * 20 - 10);
-            const newData = Array.from({length: 10}, () => Math.floor(150 + randomFactor()));
-            
-            priceChart.data.datasets[0].data = newData;
+            const randomFactor = () => (Math.random() * 10 - 5);
+            let base = 150;
+            const newCandles = Array.from({length: 10}, (_, i) => {
+                let o = Math.floor(base + randomFactor());
+                let c = Math.floor(o + randomFactor());
+                let h = Math.max(o, c) + Math.floor(Math.random() * 5);
+                let l = Math.min(o, c) - Math.floor(Math.random() * 5);
+                base = c;
+                return { x: `2026-08-${String(i+1).padStart(2, '0')}`, o, h, l, c };
+            });
+
+            priceChart.data.datasets[0].data = newCandles;
             priceChart.update();
             subChart.update();
         }
